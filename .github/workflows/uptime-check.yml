@@ -19,15 +19,15 @@ jobs:
               -H 'Content-Type: application/json' \
               -d "{\"text\":\"🚨 *Uptime alert*: $1\"}"
           }
-          if ! body=$(curl -sf --max-time 15 https://new.tallstak.com); then
-            echo "❌ Failed to reach new.tallstak.com – sending Slack alert"
-            alert "Could not reach https://new.tallstak.com"
+          if ! body=$(curl -sf --max-time 15 https://tallstak.com); then
+            echo "❌ Failed to reach tallstak.com – sending Slack alert"
+            alert "Could not reach https://tallstak.com"
             exit 1
           fi
           if echo "$body" | grep -qi "campaigns"; then
-            echo "✅ 'campaigns' found on new.tallstak.com"
+            echo "✅ 'campaigns' found on tallstak.com"
           else
             echo "❌ 'campaigns' NOT found – sending Slack alert"
-            alert "The word *campaigns* was not found on https://new.tallstak.com"
+            alert "The word *campaigns* was not found on https://tallstak.com"
             exit 1
           fi
