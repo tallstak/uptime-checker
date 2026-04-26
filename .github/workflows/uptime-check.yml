@@ -8,26 +8,65 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
-    permissions: {}
+    permissions:
+      actions: write
     steps:
-      - name: Check new.tallstak.com for "campaigns"
+      - name: Restore downtime state
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: /tmp/downtime-state
+          key: downtime-state-current
+
+      - name: Check tallstak.com for "campaigns"
+        id: check
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          CACHE_HIT: ${{ steps.cache-restore.outputs.cache-hit }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           alert() {
             curl -s -X POST "$SLACK_WEBHOOK_URL" \
               -H 'Content-Type: application/json' \
-              -d "{\"text\":\"🚨 *Uptime alert*: $1\"}"
+              -d "{\"text\":\"$1\"}"
           }
+
+          SITE_UP=true
           if ! body=$(curl -sf --max-time 15 https://tallstak.com); then
-            echo "❌ Failed to reach tallstak.com – sending Slack alert"
-            alert "Could not reach https://tallstak.com"
-            exit 1
+            echo "❌ Failed to reach tallstak.com"
+            SITE_UP=false
+          elif ! echo "$body" | grep -qi "campaigns"; then
+            echo "❌ 'campaigns' NOT found"
+            SITE_UP=false
           fi
-          if echo "$body" | grep -qi "campaigns"; then
-            echo "✅ 'campaigns' found on tallstak.com"
+
+          if [ "$SITE_UP" = "true" ]; then
+            if [ "$CACHE_HIT" = "true" ] && [ -f /tmp/downtime-state/down_since ]; then
+              DOWN_SINCE=$(cat /tmp/downtime-state/down_since)
+              NOW=$(date +%s)
+              DURATION=$(( NOW - DOWN_SINCE ))
+              HOURS=$(( DURATION / 3600 ))
+              MINUTES=$(( (DURATION % 3600) / 60 ))
+              SECONDS_LEFT=$(( DURATION % 60 ))
+              echo "✅ tallstak.com is back up – sending recovery alert"
+              alert "✅ *Uptime alert*: https://tallstak.com is back up! It was down for ${HOURS}h ${MINUTES}m ${SECONDS_LEFT}s."
+              gh api --method DELETE "/repos/${{ github.repository }}/actions/caches?key=downtime-state-current" || true
+            else
+              echo "✅ 'campaigns' found on tallstak.com"
+            fi
           else
-            echo "❌ 'campaigns' NOT found – sending Slack alert"
-            alert "The word *campaigns* was not found on https://tallstak.com"
+            echo "site_down=true" >> "$GITHUB_OUTPUT"
+            mkdir -p /tmp/downtime-state
+            if [ ! -f /tmp/downtime-state/down_since ]; then
+              date +%s > /tmp/downtime-state/down_since
+              alert "🚨 *Uptime alert*: Could not reach https://tallstak.com or 'campaigns' was not found"
+            fi
             exit 1
           fi
+
+      - name: Save downtime state
+        if: always() && steps.check.outputs.site_down == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/downtime-state
+          key: downtime-state-current
