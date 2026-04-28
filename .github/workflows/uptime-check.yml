@@ -32,7 +32,10 @@ jobs:
           }
 
           SITE_UP=true
-          if ! body=$(curl -sf --max-time 15 -H 'Accept-Language: en' https://tallstak.com); then
+          if ! body=$(curl -sfL --max-time 15 \
+            -H 'Accept-Language: en' \
+            -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36' \
+            https://tallstak.com); then
             echo "❌ Failed to reach tallstak.com"
             SITE_UP=false
           elif ! echo "$body" | grep -qi "campaigns"; then
